@@ -5,6 +5,7 @@ numpy
 pandas
 scikit-learn
 shap
+streamlit
 tqdm
 wfdb
 xgboost
