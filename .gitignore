@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+hf_env/
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# Python cache
+.pytest_cache/
+
+# Models
+models/*.joblib
+
+# Large datasets
+data/
+
+# Generated features
+features/
+
+# Generated results
+results/*.png
+results/*.csv
+
+# OS
+.DS_Store
+Thumbs.db
