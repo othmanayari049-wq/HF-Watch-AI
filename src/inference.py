@@ -17,9 +17,13 @@ def extract_hrv_features(
     record_path: Path,
     channel: int = 0,
     start_seconds: int = 0,
-) -> tuple[pd.DataFrame, dict[str, int]]:
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Extract HRV features and visualization metadata from one ECG window."""
     record = wfdb.rdrecord(str(record_path))
     sampling_rate = int(record.fs)
+
+    if record.p_signal is None or record.p_signal.ndim != 2:
+        raise ValueError("The selected WFDB record does not contain a readable ECG signal.")
 
     if channel < 0 or channel >= record.p_signal.shape[1]:
         raise ValueError(
@@ -27,47 +31,72 @@ def extract_hrv_features(
             f"{record.p_signal.shape[1]} channel(s)."
         )
 
+    if start_seconds < 0:
+        raise ValueError("start_seconds cannot be negative.")
+
     start_sample = int(start_seconds * sampling_rate)
     end_sample = start_sample + int(WINDOW_SECONDS * sampling_rate)
 
-    if start_sample < 0:
-        raise ValueError("start_seconds cannot be negative.")
+    if start_sample >= len(record.p_signal):
+        raise ValueError("The selected start time is beyond the end of the recording.")
 
     if end_sample > len(record.p_signal):
+        available_seconds = max(
+            0.0, (len(record.p_signal) - start_sample) / sampling_rate
+        )
         raise ValueError(
-            "A complete 5-minute window is not available from the selected start time."
+            "A complete 5-minute window is not available from the selected start time. "
+            f"Only {available_seconds:.1f} seconds remain."
         )
 
-    segment = record.p_signal[start_sample:end_sample, channel]
+    raw_segment = record.p_signal[start_sample:end_sample, channel].astype(float)
 
-    missing_fraction = float(np.isnan(segment).mean())
+    missing_fraction = float(np.isnan(raw_segment).mean())
     if missing_fraction > 0.05:
         raise ValueError(
-            f"The ECG window contains {missing_fraction:.1%} missing values."
+            f"The ECG window contains {missing_fraction:.1%} missing values; "
+            "the allowed maximum is 5%."
         )
 
     segment = (
-        pd.Series(segment)
+        pd.Series(raw_segment)
         .interpolate(limit_direction="both")
-        .to_numpy()
+        .to_numpy(dtype=float)
     )
 
     cleaned = nk.ecg_clean(segment, sampling_rate=sampling_rate)
     _, info = nk.ecg_process(cleaned, sampling_rate=sampling_rate)
 
-    beat_count = len(info["ECG_R_Peaks"])
+    r_peaks = np.asarray(info["ECG_R_Peaks"], dtype=int)
+    beat_count = len(r_peaks)
     if beat_count < MINIMUM_BEATS:
         raise ValueError(
             f"Only {beat_count} beats were detected; at least {MINIMUM_BEATS} are required."
         )
 
     hrv = nk.hrv(info, sampling_rate=sampling_rate, show=False)
-    metadata = {
+
+    rr_ms = np.diff(r_peaks) / sampling_rate * 1000.0
+    mean_hr_bpm = float(60_000.0 / np.mean(rr_ms)) if len(rr_ms) else float("nan")
+
+    signal_name = (
+        record.sig_name[channel]
+        if record.sig_name and channel < len(record.sig_name)
+        else f"Channel {channel}"
+    )
+
+    metadata: dict[str, object] = {
         "sampling_rate": sampling_rate,
         "detected_beats": beat_count,
         "window_seconds": WINDOW_SECONDS,
         "channel": channel,
+        "signal_name": signal_name,
         "start_seconds": start_seconds,
+        "missing_fraction": missing_fraction,
+        "mean_hr_bpm": mean_hr_bpm,
+        "raw_signal": segment,
+        "cleaned_signal": np.asarray(cleaned, dtype=float),
+        "r_peaks": r_peaks,
     }
     return hrv, metadata
 
@@ -78,6 +107,7 @@ def predict_wfdb_record(
     channel: int = 0,
     start_seconds: int = 0,
 ) -> dict[str, object]:
+    """Run the experimental classifier on one 5-minute WFDB ECG window."""
     if not model_path.exists():
         raise FileNotFoundError(f"Model file not found: {model_path}")
 
