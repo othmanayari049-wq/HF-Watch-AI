@@ -10,6 +10,10 @@ import pandas
 import sklearn
 import wfdb
 
+import quality
+import record_analysis
+import reporting
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = PROJECT_ROOT / "models" / "hf_watch_top20_model.joblib"
@@ -32,6 +36,9 @@ def main() -> None:
     status("scikit-learn import", True, sklearn.__version__)
     status("WFDB import", True, wfdb.__version__)
     status("NeuroKit2 import", True, neurokit2.__version__)
+    status("Quality module", hasattr(quality, "assess_window_quality"))
+    status("Full-record module", hasattr(record_analysis, "analyze_full_record"))
+    status("Reporting module", hasattr(reporting, "result_to_html_bytes"))
 
     status("CHF dataset folder", CHF_DATA_DIR.exists(), str(CHF_DATA_DIR))
     status("Healthy dataset folder", HEALTHY_DATA_DIR.exists(), str(HEALTHY_DATA_DIR))
@@ -47,14 +54,10 @@ def main() -> None:
             "valid" if not missing else f"missing keys: {sorted(missing)}",
         )
         if not missing:
-            status(
-                "Model feature count",
-                len(saved["feature_columns"]) == 20,
-                str(len(saved["feature_columns"])),
-            )
+            status("Model feature count", len(saved["feature_columns"]) == 20, str(len(saved["feature_columns"])))
 
     print("\nA FAIL for local datasets or model means that file is not present locally.")
-    print("The repository intentionally excludes large datasets and trained models.")
+    print("The repository intentionally excludes large datasets and trained models by default.")
 
 
 if __name__ == "__main__":
