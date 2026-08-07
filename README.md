@@ -2,6 +2,8 @@
 
 HF-Watch-AI is an experimental research pipeline for heart-failure screening using ECG-derived heart-rate variability (HRV) features and explainable machine learning.
 
+> **Research use only.** HF-Watch-AI is not a medical device and must not be used to diagnose, rule out, or manage heart failure or any other medical condition.
+
 ## Project overview
 
 The pipeline:
@@ -14,6 +16,7 @@ The pipeline:
 6. Uses SHAP for explainability.
 7. Evaluates performance on unseen patients.
 8. Performs external database validation on independent long-term RR-interval datasets.
+9. Provides reusable command-line inference and an interactive Streamlit research demo.
 
 ## Datasets
 
@@ -29,9 +32,20 @@ The pipeline:
 
 The raw datasets are not included in this repository.
 
-## Model
+A PTB Diagnostic ECG Database copy may also be used for exploratory work, but it is **not used as external validation for the current 5-minute HRV model** because many PTB records are much shorter than the model's required 300-second analysis window.
 
-The final research model is a logistic-regression pipeline using 20 selected HRV features extracted from 5-minute windows. The preprocessing pipeline includes median imputation and standardization.
+## Final research model
+
+The final classifier is a logistic-regression pipeline using 20 selected HRV features extracted from 5-minute windows.
+
+The saved pipeline includes:
+
+- median imputation
+- standardization
+- class-balanced logistic regression
+- fixed 0.50 decision threshold for the current research demo
+
+The output is described as a **CHF-like HRV pattern** or **Healthy-like HRV pattern**. The reported CHF-like probability is the model's output score; it is **not** an estimate of a patient's true clinical probability of heart failure.
 
 ## Internal results
 
@@ -47,7 +61,7 @@ These very high internal results should be interpreted cautiously because the CH
 
 ## External validation
 
-The trained model was evaluated without retraining on independent PhysioNet long-term RR-interval databases using the same 5-minute HRV window duration.
+The trained model was evaluated **without retraining or threshold tuning** on independent PhysioNet long-term RR-interval databases using 5-minute HRV windows.
 
 ### Window level
 
@@ -67,19 +81,19 @@ Results:
 
 ### Record level
 
-The more important external analysis aggregates repeated windows within each record, giving 83 independent records:
+Because many 5-minute windows come from the same long-term record, the record-level analysis is the more important external result. It uses 83 independent records:
 
 - 29 CHF records
 - 54 healthy records
 
 Results:
 
-- Accuracy: 84.34% (95% bootstrap CI: 75.90%–91.57%)
-- Sensitivity: 72.41% (95% CI: 55.56%–88.00%)
-- Specificity: 90.74% (95% CI: 82.14%–98.04%)
-- Precision: 80.77% (95% CI: 64.70%–95.45%)
-- F1-score: 76.36% (95% CI: 62.22%–87.50%)
-- ROC-AUC: 0.8902 (95% CI: 0.7918–0.9661)
+- Accuracy: **84.34%** (95% bootstrap CI: 75.90%–91.57%)
+- Sensitivity: **72.41%** (95% CI: 55.56%–88.00%)
+- Specificity: **90.74%** (95% CI: 82.14%–98.04%)
+- Precision: **80.77%** (95% CI: 64.70%–95.45%)
+- F1-score: **76.36%** (95% CI: 62.22%–87.50%)
+- ROC-AUC: **0.8902** (95% CI: 0.7918–0.9661)
 
 Record-level confusion matrix:
 
@@ -88,19 +102,62 @@ Record-level confusion matrix:
 | Actual Healthy | 49 | 5 |
 | Actual CHF | 8 | 21 |
 
-The external results are substantially lower than the internal results. This indicates that the classifier contains useful HRV signal but also confirms that internal performance was affected by dataset/source differences and should not be interpreted as clinical diagnostic accuracy.
+The external results are substantially lower than the internal results. This indicates that the classifier contains useful HRV signal while also confirming meaningful cross-database generalization limits and likely source effects in the development results.
 
-## Important limitations
+## Streamlit research demo
 
-- The development CHF and healthy cohorts originate from different PhysioNet databases, creating a risk of database-source bias.
-- The external CHF and healthy cohorts also come from separate databases, so external validation reduces but does not eliminate source bias.
-- Multiple 5-minute windows are derived from each long-term record; record-level metrics are therefore emphasized over window-level metrics.
-- Beat annotations are used for the external RR datasets, whereas the raw-ECG inference workflow detects R-peaks from ECG signals. These pipelines are related but not identical.
-- No threshold tuning was performed on the external evaluation set.
-- The model has not been prospectively tested in a clinical population.
-- The output represents a CHF-like HRV pattern, not a diagnosis or an estimate of a patient's true probability of heart failure.
+The Streamlit interface now provides:
 
-This repository is an experimental research prototype and is not a medical device or clinically validated diagnostic system.
+- local WFDB record-path input
+- ECG channel selection
+- selectable 5-minute start time
+- CHF-like model score
+- detected beat count
+- mean heart rate
+- sampling rate and selected signal name
+- cleaned ECG preview
+- detected R-peak overlay
+- R-R interval series across the analyzed window
+- the 20 HRV features supplied to the model
+- external-validation context and limitations
+- explicit research-only safety messaging
+
+Run it with:
+
+```bash
+streamlit run app.py
+```
+
+Example development records:
+
+```text
+C:\Users\<USER>\HF-Watch-AI\data\chfdb\files\chf01
+C:\Users\<USER>\HF-Watch-AI\data\nsrdb\16265
+```
+
+Enter the WFDB record path **without** `.dat` or `.hea`.
+
+For the default first 5-minute window:
+
+- ECG channel: `0`
+- Window start time: `0`
+
+A start time of `300` analyzes minutes 5–10, `600` analyzes minutes 10–15, and so on, provided a complete 5-minute window remains in the recording.
+
+## Command-line inference
+
+Run the same shared inference pipeline from the terminal:
+
+```bash
+python src/16_predict_record.py data/chfdb/files/chf01
+python src/16_predict_record.py data/nsrdb/16265
+```
+
+Optional parameters:
+
+```bash
+python src/16_predict_record.py RECORD_PATH --channel 0 --start-seconds 300
+```
 
 ## Installation
 
@@ -109,14 +166,6 @@ python -m venv hf_env
 hf_env\Scripts\activate
 python -m pip install -r requirements.txt
 ```
-
-## Run the Streamlit demo
-
-```bash
-streamlit run app.py
-```
-
-The demo analyzes a 5-minute ECG window and reports an experimental CHF-like probability based on extracted HRV features.
 
 ## Main scripts
 
@@ -151,6 +200,33 @@ The demo analyzes a 5-minute ECG window and reports an experimental CHF-like pro
 - `src/20_external_validation_plots.py`
 - `src/21_record_level_metrics.py`
 
+## Generated outputs
+
+The pipeline can generate artifacts such as:
+
+- internal confusion matrix, ROC and precision-recall figures
+- SHAP summary figure
+- external confusion matrix
+- external ROC curve
+- external precision-recall curve
+- external probability distribution
+- external window-level prediction table
+- external record-level summary table
+
+Large datasets and generated intermediate feature tables should remain outside version control.
+
+## Important limitations
+
+- The development CHF and healthy cohorts originate from different PhysioNet databases, creating a risk of database-source bias.
+- The external CHF and healthy cohorts also come from separate databases, so external validation reduces but does not eliminate source bias.
+- Multiple 5-minute windows are derived from each long-term record; record-level metrics are therefore emphasized over window-level metrics.
+- Beat annotations are used for the external RR datasets, whereas the raw-ECG inference workflow detects R-peaks from ECG signals. These pipelines are related but not identical.
+- No threshold tuning was performed on the external evaluation set.
+- The model has not been prospectively tested in a clinical population.
+- The current app accepts local WFDB ECG records; it is not designed for arbitrary consumer wearable files or clinical ECG formats without preprocessing.
+- A Healthy-like result does not rule out disease, and a CHF-like result does not establish a diagnosis.
+- Prospective validation on independently collected, clinically characterized cohorts is required before any clinical interpretation.
+
 ## Disclaimer
 
-For research and educational use only. HF-Watch-AI must not be used to diagnose, rule out, or manage heart failure or any other medical condition.
+For research and educational use only. HF-Watch-AI is an experimental machine-learning prototype and is not a clinically validated diagnostic system.
