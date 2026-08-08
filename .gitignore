@@ -28,7 +28,11 @@ features/
 
 # Generated results
 results/*.png
+results/*.pdf
 results/*.csv
+results/*.json
+results/*.txt
+results/publication_figures/
 
 # OS
 .DS_Store
