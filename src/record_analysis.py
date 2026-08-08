@@ -15,6 +15,19 @@ def get_record_duration_seconds(record_path: Path) -> float:
     return float(header.sig_len / header.fs)
 
 
+def _agreement_label(agreement: float) -> str:
+    """Return a descriptive, non-clinical label for window agreement.
+
+    The cut points are presentation heuristics only. They were not optimized on
+    the external validation set and must not be interpreted as clinical limits.
+    """
+    if agreement >= 0.80:
+        return "high"
+    if agreement >= 0.65:
+        return "moderate"
+    return "low / mixed"
+
+
 def analyze_full_record(
     record_path: Path,
     model_path: Path,
@@ -81,6 +94,11 @@ def analyze_full_record(
             "mean_chf_probability": float("nan"),
             "median_chf_probability": float("nan"),
             "chf_like_window_fraction": float("nan"),
+            "window_agreement": float("nan"),
+            "agreement_label": "unavailable",
+            "probability_std": float("nan"),
+            "probability_min": float("nan"),
+            "probability_max": float("nan"),
             "record_prediction": None,
             "record_interpretation": "No valid windows",
         }
@@ -88,12 +106,20 @@ def analyze_full_record(
 
     fraction = float(valid["prediction"].mean())
     record_prediction = int(fraction >= 0.5)
+    agreement = float(max(fraction, 1.0 - fraction))
+    probabilities = valid["chf_probability"].astype(float)
+
     summary = {
         "valid_windows": int(len(valid)),
         "skipped_windows": int(len(df) - len(valid)),
-        "mean_chf_probability": float(valid["chf_probability"].mean()),
-        "median_chf_probability": float(valid["chf_probability"].median()),
+        "mean_chf_probability": float(probabilities.mean()),
+        "median_chf_probability": float(probabilities.median()),
         "chf_like_window_fraction": fraction,
+        "window_agreement": agreement,
+        "agreement_label": _agreement_label(agreement),
+        "probability_std": float(probabilities.std(ddof=0)),
+        "probability_min": float(probabilities.min()),
+        "probability_max": float(probabilities.max()),
         "record_prediction": record_prediction,
         "record_interpretation": (
             "CHF-like record pattern" if record_prediction == 1 else "Healthy-like record pattern"
