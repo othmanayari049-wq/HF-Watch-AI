@@ -226,7 +226,37 @@ if run_full and record_path is not None:
             c2.metric("Mean CHF-like score", f"{summary['mean_chf_probability']:.1%}")
             c3.metric("CHF-like window fraction", f"{summary['chf_like_window_fraction']:.1%}")
             c4.metric("Skipped windows", summary["skipped_windows"])
-            st.info(f"Experimental record aggregation: **{summary['record_interpretation']}**. This majority-window rule is a research summary, not a clinical diagnosis.")
+
+            u1, u2, u3, u4 = st.columns(4)
+            u1.metric("Window agreement", f"{summary['window_agreement']:.1%}")
+            u2.metric("Pattern consistency", str(summary["agreement_label"]).title())
+            u3.metric("Score spread (SD)", f"{summary['probability_std']:.3f}")
+            u4.metric(
+                "Score range",
+                f"{summary['probability_min']:.1%}–{summary['probability_max']:.1%}",
+            )
+
+            agreement_label = str(summary["agreement_label"])
+            if agreement_label == "low / mixed":
+                st.warning(
+                    "The 5-minute windows disagree substantially. Treat this as a mixed/uncertain research pattern rather than a clean record-level result."
+                )
+            elif agreement_label == "moderate":
+                st.info(
+                    "The windows show moderate agreement. The record-level summary should be interpreted with caution."
+                )
+            else:
+                st.success("The analyzed windows show high agreement with the record-level pattern.")
+
+            st.info(
+                f"Experimental record aggregation: **{summary['record_interpretation']}**. "
+                "This majority-window rule is a research summary, not a clinical diagnosis."
+            )
+            st.caption(
+                "Window agreement is the fraction of valid windows supporting the majority class. "
+                "The high/moderate/low labels are descriptive presentation heuristics only; they were not optimized on the external test set and are not clinical thresholds."
+            )
+
             valid = windows[windows["status"] == "ok"]
             st.line_chart(valid, x="window_start_sec", y="chf_probability", use_container_width=True)
             st.dataframe(windows, use_container_width=True, hide_index=True)
