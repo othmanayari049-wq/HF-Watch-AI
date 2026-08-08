@@ -80,9 +80,14 @@ The output includes:
 - fraction of windows classified CHF-like;
 - a majority-window record summary;
 - skipped-window information;
+- **window agreement** with the majority class;
+- descriptive pattern consistency (`High`, `Moderate`, `Low / mixed`);
+- score spread and score range;
 - downloadable window-level CSV results.
 
 The majority-window rule is a research aggregation method, not a clinically validated patient-level decision rule.
+
+**Important:** pattern consistency measures whether the analyzed windows agree with each other. It does **not** measure whether the classification is correct. A record can be highly consistent and still be misclassified.
 
 ### Explainability
 
@@ -168,6 +173,75 @@ Record-level confusion matrix:
 
 The external results are substantially lower than the internal results. This supports the presence of useful HRV signal while also showing meaningful cross-database generalization limitations.
 
+## Robustness and follow-up experiments
+
+All model-selection experiments below used **development data only**. The external 83-record evaluation set was not used to choose a new model, threshold, calibration method, or aggregation method.
+
+### Regularization benchmark
+
+`src/23_regularization_benchmark.py` tested logistic-regression `C` values from 0.01 to 10 using patient-grouped cross-validation.
+
+- Current model (`C=1`): accuracy **99.42%**, F1 **99.45%**, ROC-AUC **0.999589**
+- Best numeric result (`C=10`): accuracy **99.50%**, F1 **99.52%**, ROC-AUC **0.999695**
+
+The gain was only about **0.08 percentage points in accuracy**, so the existing `C=1` model was retained.
+
+### Calibration benchmark
+
+`src/24_calibration_benchmark.py` compared the current score with sigmoid and isotonic calibration using grouped development validation.
+
+| Method | Mean Brier | Mean log loss |
+|---|---:|---:|
+| Uncalibrated | **0.006144** | **0.028100** |
+| Sigmoid | 0.008103 | 0.033361 |
+| Isotonic | 0.008215 | 0.063078 |
+
+Lower is better. The current uncalibrated model performed best, so no calibration layer was added. This development result does **not** establish that the score is a clinically calibrated disease probability.
+
+### Record aggregation benchmark
+
+`src/25_record_aggregation_benchmark.py` compared mean probability, median probability, and majority-window aggregation on grouped development predictions. All three achieved 100% record-level performance on that benchmark, so the simple majority-window research rule was retained rather than selecting a more complex rule without evidence of benefit.
+
+## External error analysis
+
+`src/26_external_error_analysis.py` performs a **descriptive** audit of external record errors without changing the model or threshold.
+
+Out of 83 records:
+
+- Correct: **70**
+- Misclassified: **13**
+- False positives: **5**
+- False negatives: **8**
+
+The failures are not explained by a simple threshold issue. Some incorrect records lie near 0.50, while others are strongly on the wrong side. Individual misclassified records can also contain 5-minute windows spanning almost the full 0–1 score range.
+
+## External consistency audit
+
+`src/27_external_consistency_audit.py` descriptively examined the new full-record consistency display. It did **not** choose or tune the consistency labels using the external set.
+
+Among the 13 misclassified records:
+
+- `Low / mixed`: **10**
+- `Moderate`: **1**
+- `High`: **2**
+
+Among the 70 correctly classified records, **18** were `Low / mixed`.
+
+Mean window agreement was lower for errors than for correct records:
+
+- False negatives: **0.739**
+- False positives: **0.633**
+- True negatives: **0.828**
+- True positives: **0.846**
+
+This suggests that low agreement is often a useful warning of a difficult or heterogeneous record. However, it is **not a correctness detector**. Two false-negative CHF records (`chf201` and `chf219`) had `High` consistency despite being incorrectly classified.
+
+Therefore:
+
+> **High consistency means the analyzed windows agree with each other. It does not mean the model is correct.**
+
+The `High`, `Moderate`, and `Low / mixed` labels are descriptive presentation heuristics only. They are not validated uncertainty thresholds, clinical confidence scores, or probabilities of correctness.
+
 ## Important limitations
 
 - Development CHF and healthy cohorts originate from different PhysioNet databases, creating database-source-bias risk.
@@ -175,10 +249,12 @@ The external results are substantially lower than the internal results. This sup
 - Beat annotations are used for the external RR datasets, while raw-ECG inference detects R-peaks algorithmically.
 - Repeated 5-minute windows from one record are correlated.
 - The 0.50 decision threshold was not tuned on the external evaluation set.
-- The new quality rules are engineering safeguards, not validated clinical ECG-quality standards.
+- The quality rules are engineering safeguards, not validated clinical ECG-quality standards.
 - Full-record majority-window aggregation is exploratory.
+- Pattern consistency reflects within-record agreement, not correctness or clinical confidence.
+- Development-only calibration testing does not establish clinical probability calibration.
 - No prospective clinical validation has been performed.
-- No validated subgroup fairness, calibration, or acquisition-device robustness study has yet been completed.
+- No validated subgroup fairness, rhythm-specific, acquisition-device, or site-robustness study has been completed.
 - A healthy-like output does not establish clinical health and does not rule out heart failure.
 - A CHF-like output does not diagnose heart failure.
 
@@ -253,17 +329,7 @@ python src/22_full_record_analysis.py data/chfdb/files/chf01 --channel 0 --max-w
 
 Set `--max-windows 0` to process all complete windows.
 
-## Regularization robustness benchmark
-
-A development-only robustness experiment is included:
-
-```bash
-python src/23_regularization_benchmark.py
-```
-
-It compares multiple logistic-regression regularization strengths using patient-grouped cross-validation and **does not use the external evaluation set for tuning**.
-
-## Main scripts
+## Research scripts
 
 ### Development and internal evaluation
 
@@ -303,10 +369,14 @@ It compares multiple logistic-regression regularization strengths using patient-
 
 - `src/22_full_record_analysis.py`
 - `src/23_regularization_benchmark.py`
+- `src/24_calibration_benchmark.py`
+- `src/25_record_aggregation_benchmark.py`
+- `src/26_external_error_analysis.py`
+- `src/27_external_consistency_audit.py`
 
 ## Deployment note
 
-The Streamlit UI is now upload-ready, but a public deployment still needs the trained model artifact to be available to the deployed application. The repository intentionally ignores `models/*.joblib` by default. Do not claim a public deployment is reproducible until the exact validated model artifact and its provenance/versioning are intentionally packaged.
+The Streamlit UI is upload-ready, but a public deployment still needs the trained model artifact to be available to the deployed application. The repository intentionally ignores `models/*.joblib` by default. Do not claim a public deployment is reproducible until the exact validated model artifact and its provenance/versioning are intentionally packaged.
 
 ## Disclaimer
 
