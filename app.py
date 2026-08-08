@@ -79,7 +79,7 @@ def _render_window_result(result: dict[str, object]):
         st.success("**Healthy-like HRV pattern detected.** This does not rule out heart failure or establish that a person is clinically healthy.")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("CHF-like probability", f"{probability:.1%}")
+    c1.metric("CHF-like model score", f"{probability:.1%}")
     c2.metric("Detected beats", int(result["detected_beats"]))
     c3.metric("Mean heart rate", f"{float(result['mean_hr_bpm']):.1f} bpm")
     c4.metric("Sampling rate", f"{result['sampling_rate']} Hz")
@@ -188,7 +188,8 @@ st.info("Use a local WFDB record path without an extension, or upload a matching
 with st.expander("How to interpret the output"):
     st.markdown(
         "The model first detects heartbeats (R-peaks), converts their timing into R-R intervals, calculates HRV features, and then outputs a CHF-like model score. "
-        "A score above 0.50 is classified as CHF-like. This number is **not** the patient's true medical probability of heart failure."
+        "A score above 0.50 is classified as CHF-like. This score is **not** the patient's true medical probability of heart failure. "
+        "For full-record analysis, consistency describes how strongly the analyzed windows agree with one another; it does **not** estimate whether the model is correct."
     )
 
 record_path: Path | None = None
@@ -239,14 +240,16 @@ if run_full and record_path is not None:
             agreement_label = str(summary["agreement_label"])
             if agreement_label == "low / mixed":
                 st.warning(
-                    "The 5-minute windows disagree substantially. Treat this as a mixed/uncertain research pattern rather than a clean record-level result."
+                    "The 5-minute windows disagree substantially. Treat this as a mixed research pattern. This flag reflects disagreement between windows, not the probability that the model is wrong."
                 )
             elif agreement_label == "moderate":
                 st.info(
-                    "The windows show moderate agreement. The record-level summary should be interpreted with caution."
+                    "The windows show moderate agreement. Interpret the record-level research summary cautiously. Agreement does not measure correctness."
                 )
             else:
-                st.success("The analyzed windows show high agreement with the record-level pattern.")
+                st.success(
+                    "The analyzed windows show high agreement with the record-level pattern. High agreement means the windows are consistent with each other; it does not mean the classification is known to be correct."
+                )
 
             st.info(
                 f"Experimental record aggregation: **{summary['record_interpretation']}**. "
@@ -254,7 +257,7 @@ if run_full and record_path is not None:
             )
             st.caption(
                 "Window agreement is the fraction of valid windows supporting the majority class. "
-                "The high/moderate/low labels are descriptive presentation heuristics only; they were not optimized on the external test set and are not clinical thresholds."
+                "The high/moderate/low labels are descriptive presentation heuristics only; they were not optimized on the external test set, are not clinical thresholds, and must not be interpreted as confidence in correctness."
             )
 
             valid = windows[windows["status"] == "ok"]
